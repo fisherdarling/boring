@@ -169,7 +169,7 @@ where
     S: Service<Uri, Response = T> + Send,
     S::Error: Into<Box<dyn Error + Send + Sync>>,
     S::Future: Unpin + Send + 'static,
-    T: AsyncRead + AsyncWrite + Connection + Unpin + Debug + Sync + Send + 'static,
+    T: AsyncRead + AsyncWrite + Connection + Unpin + Sync + Send + 'static,
 {
     /// Creates a new `HttpsConnector`.
     ///
