@@ -85,17 +85,18 @@ impl BasicConstraints {
 }
 
 /// An extension consisting of a list of names of the permitted key usages.
+#[derive(Debug, Clone, Copy)]
 pub struct KeyUsage {
-    critical: bool,
-    digital_signature: bool,
-    non_repudiation: bool,
-    key_encipherment: bool,
-    data_encipherment: bool,
-    key_agreement: bool,
-    key_cert_sign: bool,
-    crl_sign: bool,
-    encipher_only: bool,
-    decipher_only: bool,
+    pub critical: bool,
+    pub digital_signature: bool,
+    pub non_repudiation: bool,
+    pub key_encipherment: bool,
+    pub data_encipherment: bool,
+    pub key_agreement: bool,
+    pub key_cert_sign: bool,
+    pub crl_sign: bool,
+    pub encipher_only: bool,
+    pub decipher_only: bool,
 }
 
 impl Default for KeyUsage {
@@ -181,6 +182,43 @@ impl KeyUsage {
         self
     }
 
+    pub fn from_bitstring(critical: bool, bits: i32) -> KeyUsage {
+        let mut key_usage = KeyUsage::new();
+
+        if critical {
+            key_usage.critical();
+        }
+        if bits & ffi::X509v3_KU_DIGITAL_SIGNATURE > 0 {
+            key_usage.digital_signature();
+        }
+        if bits & ffi::X509v3_KU_NON_REPUDIATION > 0 {
+            key_usage.non_repudiation();
+        }
+        if bits & ffi::X509v3_KU_ENCIPHER_ONLY > 0 {
+            key_usage.encipher_only();
+        }
+        if bits & ffi::X509v3_KU_CRL_SIGN > 0 {
+            key_usage.crl_sign();
+        }
+        if bits & ffi::X509v3_KU_KEY_CERT_SIGN > 0 {
+            key_usage.key_cert_sign();
+        }
+        if bits & ffi::X509v3_KU_KEY_AGREEMENT > 0 {
+            key_usage.key_agreement();
+        }
+        if bits & ffi::X509v3_KU_KEY_ENCIPHERMENT > 0 {
+            key_usage.key_encipherment();
+        }
+        if bits & ffi::X509v3_KU_DATA_ENCIPHERMENT > 0 {
+            key_usage.data_encipherment();
+        }
+        if bits & ffi::X509v3_KU_DECIPHER_ONLY > 0 {
+            key_usage.decipher_only();
+        }
+
+        key_usage
+    }
+
     /// Return the `KeyUsage` extension as an `X509Extension`.
     pub fn build(&self) -> Result<X509Extension, ErrorStack> {
         let mut value = String::new();
@@ -221,24 +259,22 @@ impl KeyUsage {
 
 /// An extension consisting of a list of usages indicating purposes
 /// for which the certificate public key can be used for.
+#[derive(Debug, Default)]
 pub struct ExtendedKeyUsage {
-    critical: bool,
-    items: Vec<String>,
-}
-
-impl Default for ExtendedKeyUsage {
-    fn default() -> ExtendedKeyUsage {
-        ExtendedKeyUsage::new()
-    }
+    pub critical: bool,
+    pub client_auth: bool,
+    pub server_auth: bool,
+    pub code_signing: bool,
+    pub email_protection: bool,
+    pub time_stamping: bool,
+    pub ocsp_signing: bool,
+    pub items: Vec<String>,
 }
 
 impl ExtendedKeyUsage {
     /// Construct a new `ExtendedKeyUsage` extension.
     pub fn new() -> ExtendedKeyUsage {
-        ExtendedKeyUsage {
-            critical: false,
-            items: vec![],
-        }
+        ExtendedKeyUsage::default()
     }
 
     /// Sets the `critical` flag to `true`. The extension will be critical.
@@ -249,22 +285,26 @@ impl ExtendedKeyUsage {
 
     /// Sets the `serverAuth` flag to `true`.
     pub fn server_auth(&mut self) -> &mut ExtendedKeyUsage {
-        self.other("serverAuth")
+        self.server_auth = true;
+        self
     }
 
     /// Sets the `clientAuth` flag to `true`.
     pub fn client_auth(&mut self) -> &mut ExtendedKeyUsage {
-        self.other("clientAuth")
+        self.client_auth = true;
+        self
     }
 
     /// Sets the `codeSigning` flag to `true`.
     pub fn code_signing(&mut self) -> &mut ExtendedKeyUsage {
-        self.other("codeSigning")
+        self.code_signing = true;
+        self
     }
 
     /// Sets the `timeStamping` flag to `true`.
     pub fn time_stamping(&mut self) -> &mut ExtendedKeyUsage {
-        self.other("timeStamping")
+        self.time_stamping = true;
+        self
     }
 
     /// Sets the `msCodeInd` flag to `true`.
@@ -303,12 +343,69 @@ impl ExtendedKeyUsage {
         self
     }
 
+    pub fn from_stack(critical: bool, stack: Stack<Asn1Object>) -> ExtendedKeyUsage {
+        let mut ext_key_usage = ExtendedKeyUsage::new();
+        if critical {
+            ext_key_usage.critical();
+        }
+
+        let mut items = vec![];
+        for item in stack {
+            match item.nid() {
+                Nid::SERVER_AUTH => {
+                    ext_key_usage.server_auth = true;
+                }
+                Nid::CLIENT_AUTH => {
+                    ext_key_usage.client_auth = true;
+                }
+                Nid::CODE_SIGN => {
+                    ext_key_usage.code_signing = true;
+                }
+                Nid::EMAIL_PROTECT => {
+                    ext_key_usage.email_protection = true;
+                }
+                Nid::TIME_STAMP => {
+                    ext_key_usage.time_stamping = true;
+                }
+                Nid::OCSP_SIGN => {
+                    ext_key_usage.ocsp_signing = true;
+                }
+                _ => {
+                    items.push(item.to_string());
+                }
+            }
+        }
+
+        ext_key_usage
+    }
+
     /// Return the `ExtendedKeyUsage` extension as an `X509Extension`.
     pub fn build(&self) -> Result<X509Extension, ErrorStack> {
         let mut stack = Stack::new()?;
+
+        if self.server_auth {
+            stack.push(Asn1Object::from_nid(Nid::SERVER_AUTH)?)?;
+        }
+        if self.client_auth {
+            stack.push(Asn1Object::from_nid(Nid::CLIENT_AUTH)?)?;
+        }
+        if self.code_signing {
+            stack.push(Asn1Object::from_nid(Nid::CODE_SIGN)?)?;
+        }
+        if self.email_protection {
+            stack.push(Asn1Object::from_nid(Nid::EMAIL_PROTECT)?)?;
+        }
+        if self.time_stamping {
+            stack.push(Asn1Object::from_nid(Nid::TIME_STAMP)?)?;
+        }
+        if self.ocsp_signing {
+            stack.push(Asn1Object::from_nid(Nid::OCSP_SIGN)?)?;
+        }
+
         for item in &self.items {
             stack.push(Asn1Object::from_str(item)?)?;
         }
+
         unsafe {
             X509Extension::new_internal(Nid::EXT_KEY_USAGE, self.critical, stack.as_ptr().cast())
         }

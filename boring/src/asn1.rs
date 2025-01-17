@@ -510,6 +510,14 @@ foreign_type_and_impl_send_sync! {
     pub struct Asn1BitString;
 }
 
+impl Asn1BitString {
+    /// Creates a new `Asn1BitString`.
+    pub fn new() -> Result<Asn1BitString, ErrorStack> {
+        ffi::init();
+        Ok(unsafe { Asn1BitString::from_ptr(cvt_p(ffi::ASN1_BIT_STRING_new())?) })
+    }
+}
+
 impl Asn1BitStringRef {
     /// Returns the Asn1BitString as a slice.
     #[corresponds(ASN1_STRING_get0_data)]
@@ -562,6 +570,17 @@ impl Asn1Object {
             ffi::init();
             let txt = CString::new(txt).unwrap();
             let obj: *mut ffi::ASN1_OBJECT = cvt_p(ffi::OBJ_txt2obj(txt.as_ptr() as *const _, 0))?;
+            Ok(Asn1Object::from_ptr(obj))
+        }
+    }
+
+    /// Constructs an ASN.1 Object Identifier from a [`Nid`].
+    #[corresponds(OBJ_txt2obj)]
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_nid(nid: Nid) -> Result<Asn1Object, ErrorStack> {
+        unsafe {
+            ffi::init();
+            let obj: *mut ffi::ASN1_OBJECT = cvt_p(ffi::OBJ_nid2obj(nid.as_raw()))?;
             Ok(Asn1Object::from_ptr(obj))
         }
     }

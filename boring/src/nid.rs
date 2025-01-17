@@ -154,6 +154,10 @@ impl Nid {
     pub const X9_62_PRIME239V2: Nid = Nid(ffi::NID_X9_62_prime239v2);
     pub const X9_62_PRIME239V3: Nid = Nid(ffi::NID_X9_62_prime239v3);
     pub const X9_62_PRIME256V1: Nid = Nid(ffi::NID_X9_62_prime256v1);
+    pub const X448: Nid = Nid(ffi::NID_X448);
+    pub const X25519: Nid = Nid(ffi::NID_X25519);
+    pub const ED448: Nid = Nid(ffi::NID_ED448);
+    pub const ED25519: Nid = Nid(ffi::NID_ED25519);
     pub const ECDSA_WITH_SHA1: Nid = Nid(ffi::NID_ecdsa_with_SHA1);
     pub const ECDSA_WITH_RECOMMENDED: Nid = Nid(ffi::NID_ecdsa_with_Recommended);
     pub const ECDSA_WITH_SPECIFIED: Nid = Nid(ffi::NID_ecdsa_with_Specified);

@@ -40,7 +40,7 @@
 //! println!("{:?}", str::from_utf8(pub_key.as_slice()).unwrap());
 //! ```
 
-use crate::ffi;
+use crate::{ffi, nid::Nid};
 use foreign_types::{ForeignType, ForeignTypeRef};
 use libc::{c_int, c_long};
 use openssl_macros::corresponds;
@@ -184,6 +184,21 @@ impl<T> PKeyRef<T> {
     #[corresponds(EVP_PKEY_size)]
     pub fn size(&self) -> usize {
         unsafe { ffi::EVP_PKEY_size(self.as_ptr()) as usize }
+    }
+
+    pub fn nid(&self) -> Nid {
+        match self.id() {
+            Id::RSA => Nid::RSA,
+            Id::RSAPSS => Nid::RSASSAPSS,
+            Id::DSA => Nid::DSA,
+            Id::DH => Nid::DHKEYAGREEMENT,
+            Id::EC => Nid::X9_62_ID_ECPUBLICKEY,
+            Id::ED25519 => Nid::ED25519,
+            Id::ED448 => Nid::ED448,
+            Id::X25519 => Nid::X25519,
+            Id::X448 => Nid::X448,
+            _ => Nid::UNDEF,
+        }
     }
 }
 

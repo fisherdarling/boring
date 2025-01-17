@@ -7,10 +7,11 @@
 //! Internet protocols, including SSL/TLS, which is the basis for HTTPS,
 //! the secure protocol for browsing the web.
 
+use extension::{ExtendedKeyUsage, KeyUsage};
+use ffi::X509_get_key_usage;
 use foreign_types::{ForeignType, ForeignTypeRef};
 use libc::{c_int, c_long, c_void};
 use openssl_macros::corresponds;
-use std::convert::TryInto;
 use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::fmt;
@@ -21,10 +22,11 @@ use std::path::Path;
 use std::ptr;
 use std::slice;
 use std::str;
+use std::{convert::TryInto, ptr::null};
 
 use crate::asn1::{
-    Asn1BitStringRef, Asn1IntegerRef, Asn1Object, Asn1ObjectRef, Asn1StringRef, Asn1TimeRef,
-    Asn1Type,
+    Asn1BitString, Asn1BitStringRef, Asn1IntegerRef, Asn1Object, Asn1ObjectRef, Asn1StringRef,
+    Asn1TimeRef, Asn1Type,
 };
 use crate::bio::{MemBio, MemBioSlice};
 use crate::conf::ConfRef;
@@ -604,6 +606,49 @@ impl X509Ref {
         to_der,
         ffi::i2d_X509
     }
+
+    pub fn key_usage(&self) -> KeyUsage {
+        let out_critical = &mut 0;
+        let bitstring = unsafe {
+            // this dance is to see if the Key Usage is critical
+            let bits_ptr = ffi::X509_get_ext_d2i(
+                self.as_ptr(),
+                ffi::NID_key_usage,
+                out_critical,
+                ptr::null_mut(),
+            );
+
+            if bits_ptr.is_null() {
+                return KeyUsage::new();
+            }
+
+            drop(Asn1BitString::from_ptr(bits_ptr as _));
+
+            X509_get_key_usage(self.as_ptr())
+        };
+
+        KeyUsage::from_bitstring(*out_critical == 1, bitstring as i32)
+    }
+
+    pub fn extended_key_usage(&self) -> ExtendedKeyUsage {
+        let out_critical = &mut 0;
+        let stack = unsafe {
+            let ex_key_usage_ptr = ffi::X509_get_ext_d2i(
+                self.as_ptr(),
+                ffi::NID_ext_key_usage,
+                out_critical,
+                ptr::null_mut(),
+            );
+
+            if ex_key_usage_ptr.is_null() {
+                return ExtendedKeyUsage::default();
+            }
+
+            Stack::from_ptr(ex_key_usage_ptr as _)
+        };
+
+        ExtendedKeyUsage::from_stack(*out_critical == 1, stack)
+    }
 }
 
 impl ToOwned for X509Ref {
@@ -848,6 +893,16 @@ impl X509ExtensionRef {
         /// Serializes the Extension to its standard DER encoding.
         to_der,
         ffi::i2d_X509_EXTENSION
+    }
+
+    /// Returns the [`Asn1Object`] value of an [`X509NExtension`].
+    /// This is useful for finding out about the actual `Nid` when iterating over all extensions.
+    #[corresponds(X509_EXTENSION_get_object)]
+    pub fn object(&self) -> &Asn1ObjectRef {
+        unsafe {
+            let object = ffi::X509_EXTENSION_get_object(self.as_ptr());
+            Asn1ObjectRef::from_ptr(object)
+        }
     }
 }
 
@@ -1257,6 +1312,12 @@ impl X509Req {
     }
 }
 
+impl Clone for X509Req {
+    fn clone(&self) -> X509Req {
+        X509ReqRef::to_owned(self)
+    }
+}
+
 impl X509ReqRef {
     to_pem! {
         /// Serializes the certificate request to a PEM-encoded PKCS#10 structure.
@@ -1316,14 +1377,71 @@ impl X509ReqRef {
         unsafe { cvt_n(ffi::X509_REQ_verify(self.as_ptr(), key.as_ptr())).map(|n| n != 0) }
     }
 
+    pub fn signature(&self) -> Result<(&X509AlgorithmRef, &Asn1BitStringRef), ErrorStack> {
+        unsafe {
+            let mut sig_alg_out = null();
+            let mut sig_out = null();
+            ffi::X509_REQ_get0_signature(self.as_ptr(), &mut sig_out, &mut sig_alg_out);
+
+            let sig_alg = X509AlgorithmRef::from_ptr(sig_alg_out as _);
+            let sig = Asn1BitStringRef::from_ptr(sig_out as _);
+
+            Ok((sig_alg, sig))
+        }
+    }
+
     /// Returns the extensions of the certificate request.
-    ///
-    /// This corresponds to [`X509_REQ_get_extensions"]
+    #[corresponds(X509_REQ_get_extensions)]
     pub fn extensions(&self) -> Result<Stack<X509Extension>, ErrorStack> {
         unsafe {
             let extensions = cvt_p(ffi::X509_REQ_get_extensions(self.as_ptr()))?;
             Ok(Stack::from_ptr(extensions))
         }
+    }
+
+    pub fn subject_alt_names(&self) -> Result<Option<Stack<GeneralName>>, ErrorStack> {
+        let exts = self.extensions()?;
+
+        let Some(ext) = exts.iter().find(|ext| {
+            ext.object().nid() == Nid::SUBJECT_ALT_NAME
+                || ext.object().nid() == Nid::ISSUER_ALT_NAME
+        }) else {
+            return Ok(None);
+        };
+
+        let names = unsafe {
+            let names = ffi::X509V3_EXT_d2i(ext.as_ptr());
+            Stack::from_ptr(names as *mut _)
+        };
+
+        Ok(Some(names))
+    }
+}
+
+impl ToOwned for X509ReqRef {
+    type Owned = X509Req;
+
+    fn to_owned(&self) -> X509Req {
+        unsafe { X509Req::from_ptr(ffi::X509_REQ_dup(self.as_ptr())) }
+    }
+}
+
+foreign_type_and_impl_send_sync! {
+    type CType = ffi::GENERAL_NAMES;
+    fn drop = ffi::GENERAL_NAMES_free;
+
+    /// A set of [`GeneralName`] values.
+    pub struct GeneralNames;
+}
+
+impl GeneralNames {
+    from_der! {
+        /// Deserializes a DER-encoded GeneralName structure.
+        #[corresponds(d2i_GENERAL_NAME)]
+        from_der,
+        GeneralName,
+        ffi::d2i_GENERAL_NAME,
+        ::libc::c_long
     }
 }
 
@@ -1599,6 +1717,15 @@ foreign_type_and_impl_send_sync! {
 
     /// An `X509` certificate signature algorithm.
     pub struct X509Algorithm;
+}
+
+impl X509Algorithm {
+    pub fn new() -> Result<X509Algorithm, ErrorStack> {
+        unsafe {
+            ffi::init();
+            Ok(X509Algorithm::from_ptr(cvt_p(ffi::X509_ALGOR_new())?))
+        }
+    }
 }
 
 impl X509AlgorithmRef {
