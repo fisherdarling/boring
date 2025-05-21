@@ -1400,8 +1400,17 @@ impl X509ReqRef {
     }
 
     pub fn subject_alt_names(&self) -> Result<Option<Stack<GeneralName>>, ErrorStack> {
-        let exts = self.extensions()?;
+        let exts = match self.extensions() {
+            Ok(exts) => exts,
+            Err(stack) if stack.errors().is_empty() => {
+                return Ok(None);
+            }
+            Err(stack) => {
+                return Err(stack);
+            }
+        };
 
+        println!("exts.is_empty()={}", exts.is_empty());
         let Some(ext) = exts.iter().find(|ext| {
             ext.object().nid() == Nid::SUBJECT_ALT_NAME
                 || ext.object().nid() == Nid::ISSUER_ALT_NAME
