@@ -1410,7 +1410,6 @@ impl X509ReqRef {
             }
         };
 
-        println!("exts.is_empty()={}", exts.is_empty());
         let Some(ext) = exts.iter().find(|ext| {
             ext.object().nid() == Nid::SUBJECT_ALT_NAME
                 || ext.object().nid() == Nid::ISSUER_ALT_NAME

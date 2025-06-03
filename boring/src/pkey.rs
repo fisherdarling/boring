@@ -230,6 +230,19 @@ where
         unsafe { ffi::EVP_PKEY_bits(self.as_ptr()) as u32 }
     }
 
+    pub fn raw_public_ed25519_key(&self) -> Result<[u8; 32], ErrorStack> {
+        unsafe {
+            let mut key = [0u8; 32];
+            // todo: check for an error
+            ffi::EVP_PKEY_get_raw_public_key(
+                self.as_ptr(),
+                key.as_mut_ptr(),
+                &mut key.len() as *mut usize,
+            );
+            Ok(key)
+        }
+    }
+
     /// Compares the public component of this key with another.
     pub fn public_eq<U>(&self, other: &PKeyRef<U>) -> bool
     where
@@ -274,6 +287,19 @@ where
         #[corresponds(i2d_PKCS8PrivateKey_bio)]
         private_key_to_der_pkcs8_passphrase,
         ffi::i2d_PKCS8PrivateKey_bio
+    }
+
+    pub fn raw_private_ed25519_key(&self) -> Result<[u8; 32], ErrorStack> {
+        unsafe {
+            let mut key = [0u8; 32];
+            // todo: check for an error
+            ffi::EVP_PKEY_get_raw_private_key(
+                self.as_ptr(),
+                key.as_mut_ptr(),
+                &mut key.len() as *mut usize,
+            );
+            Ok(key)
+        }
     }
 }
 
