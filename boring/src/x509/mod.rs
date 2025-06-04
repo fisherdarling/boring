@@ -649,6 +649,20 @@ impl X509Ref {
 
         ExtendedKeyUsage::from_stack(*out_critical == 1, stack)
     }
+
+    pub fn is_ca(&self) -> bool {
+        let out = unsafe { ffi::X509_check_ca(self.as_ptr()) };
+        out == 1
+    }
+
+    pub fn pathlen(&self) -> Option<usize> {
+        let out = unsafe { ffi::X509_get_pathlen(self.as_ptr()) };
+        if out == -1 {
+            None
+        } else {
+            Some(out as usize)
+        }
+    }
 }
 
 impl ToOwned for X509Ref {
