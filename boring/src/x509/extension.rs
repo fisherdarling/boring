@@ -25,9 +25,9 @@ use foreign_types::ForeignType;
 
 /// An extension which indicates whether a certificate is a CA certificate.
 pub struct BasicConstraints {
-    critical: bool,
-    ca: bool,
-    pathlen: Option<u32>,
+    pub critical: bool,
+    pub ca: bool,
+    pub pathlen: Option<u32>,
 }
 
 impl Default for BasicConstraints {

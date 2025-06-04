@@ -8,7 +8,7 @@
 //! the secure protocol for browsing the web.
 
 use extension::{ExtendedKeyUsage, KeyUsage};
-use ffi::X509_get_key_usage;
+use ffi::{BASIC_CONSTRAINTS_free, X509_get_key_usage};
 use foreign_types::{ForeignType, ForeignTypeRef};
 use libc::{c_int, c_long, c_void};
 use openssl_macros::corresponds;
@@ -24,10 +24,6 @@ use std::slice;
 use std::str;
 use std::{convert::TryInto, ptr::null};
 
-use crate::asn1::{
-    Asn1BitString, Asn1BitStringRef, Asn1IntegerRef, Asn1Object, Asn1ObjectRef, Asn1StringRef,
-    Asn1TimeRef, Asn1Type,
-};
 use crate::bio::{MemBio, MemBioSlice};
 use crate::conf::ConfRef;
 use crate::error::ErrorStack;
@@ -41,6 +37,13 @@ use crate::stack::{Stack, StackRef, Stackable};
 use crate::string::OpensslString;
 use crate::util::ForeignTypeRefExt;
 use crate::x509::verify::X509VerifyParamRef;
+use crate::{
+    asn1::{
+        Asn1BitString, Asn1BitStringRef, Asn1IntegerRef, Asn1Object, Asn1ObjectRef, Asn1StringRef,
+        Asn1TimeRef, Asn1Type,
+    },
+    x509::extension::BasicConstraints,
+};
 use crate::{cvt, cvt_n, cvt_p};
 
 pub mod extension;
@@ -662,6 +665,55 @@ impl X509Ref {
         } else {
             Some(out as usize)
         }
+    }
+
+    pub fn basic_constraints(&self) -> Result<Option<BasicConstraints>, ErrorStack> {
+        let mut out_critical = 0;
+        let ext_ptr = unsafe {
+            ffi::X509_get_ext_d2i(
+                self.as_ptr(),
+                ffi::NID_basic_constraints,
+                &mut out_critical,
+                ptr::null_mut(),
+            )
+        };
+
+        // "this function sets *out_critical to ... -1 if it is not found"
+        if out_critical == -1 {
+            return Ok(None);
+        }
+
+        // "If the return value is NULL and *out_critical is not -1, there was an error."
+        if ext_ptr.is_null() {
+            return Err(ErrorStack::get());
+        }
+
+        // todo: handle this case
+        // "this function sets *out_critical to ... -2 if there is an invalid duplicate extension"
+
+        let raw_basic_constraints = ext_ptr as *const ffi::BASIC_CONSTRAINTS_st;
+
+        let critical = out_critical == 1;
+        let ca = unsafe { (*raw_basic_constraints).ca } == ffi::ASN1_BOOLEAN_TRUE;
+
+        let pathlen = {
+            if unsafe { (*raw_basic_constraints).pathlen.is_null() } {
+                None
+            } else {
+                let pathlen_ref =
+                    unsafe { Asn1IntegerRef::from_ptr((*raw_basic_constraints).pathlen) };
+                #[allow(deprecated)] // TODO: how do you go from BN to u32?
+                Some(pathlen_ref.get() as u32)
+            }
+        };
+
+        unsafe { BASIC_CONSTRAINTS_free(raw_basic_constraints as *mut _) };
+
+        Ok(Some(BasicConstraints {
+            critical,
+            ca,
+            pathlen,
+        }))
     }
 }
 
