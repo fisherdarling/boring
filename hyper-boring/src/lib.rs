@@ -51,6 +51,8 @@ impl Inner {
     fn setup_ssl(&self, uri: &Uri, host: &str) -> Result<ConnectConfiguration, ErrorStack> {
         let mut conf = self.ssl.configure()?;
 
+        panic!("at the disko!");
+
         if let Some(ref callback) = self.callback {
             callback(&mut conf, uri)?;
         }
